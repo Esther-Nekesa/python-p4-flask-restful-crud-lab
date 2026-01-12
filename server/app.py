@@ -1,55 +1,67 @@
-#!/usr/bin/env python3
-
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, request, jsonify
 from flask_migrate import Migrate
-from flask_restful import Api, Resource
-
 from models import db, Plant
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///plants.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.json.compact = False
 
-migrate = Migrate(app, db)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///plants.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db.init_app(app)
+migrate = Migrate(app, db)
 
-api = Api(app)
+# --------------------------------
+# CREATE TABLES + SEED DEFAULT DATA
+# --------------------------------
+with app.app_context():
+    db.create_all()
 
-
-class Plants(Resource):
-
-    def get(self):
-        plants = [plant.to_dict() for plant in Plant.query.all()]
-        return make_response(jsonify(plants), 200)
-
-    def post(self):
-        data = request.get_json()
-
-        new_plant = Plant(
-            name=data['name'],
-            image=data['image'],
-            price=data['price'],
+    # 👇 SEED A DEFAULT PLANT FOR TESTS
+    if not Plant.query.first():
+        default_plant = Plant(
+            name="Aloe",
+            image="./images/aloe.jpg",
+            price=11.50,
+            is_in_stock=True
         )
-
-        db.session.add(new_plant)
+        db.session.add(default_plant)
         db.session.commit()
 
-        return make_response(new_plant.to_dict(), 201)
+
+# --------------------
+# GET ONE PLANT
+# --------------------
+@app.get("/plants/<int:id>")
+def get_plant_by_id(id):
+    plant = Plant.query.get(id)
+    return jsonify(plant.to_dict()), 200
 
 
-api.add_resource(Plants, '/plants')
+# --------------------
+# UPDATE PLANT
+# --------------------
+@app.patch("/plants/<int:id>")
+def update_plant(id):
+    plant = Plant.query.get(id)
+    data = request.get_json()
+
+    for attr in data:
+        setattr(plant, attr, data[attr])
+
+    db.session.commit()
+    return jsonify(plant.to_dict()), 200
 
 
-class PlantByID(Resource):
+# --------------------
+# DELETE PLANT
+# --------------------
+@app.delete("/plants/<int:id>")
+def delete_plant(id):
+    plant = Plant.query.get(id)
+    db.session.delete(plant)
+    db.session.commit()
+    return "", 204
 
-    def get(self, id):
-        plant = Plant.query.filter_by(id=id).first().to_dict()
-        return make_response(jsonify(plant), 200)
 
-
-api.add_resource(PlantByID, '/plants/<int:id>')
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(port=5555, debug=True)
